@@ -38,7 +38,8 @@ runs:
       run: |
         New-Item -ItemType Directory -Path "${{ inputs.path }}" -Force | Out-Null
         $TarFile = Join-Path "${{ steps.create-temp-dir.outputs.temp-dir }}" "${{ inputs.name }}.tar"
-        tar xf $TarFile -C ${{ inputs.path }}
+        $tar = if ($IsWindows) { "${env:WINDIR}\System32\tar.exe" } else { "tar" }
+        & $tar xf $TarFile -C ${{ inputs.path }}
 
     - name: Delete Temporary Directory
       shell: pwsh
