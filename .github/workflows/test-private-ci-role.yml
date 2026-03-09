@@ -56,22 +56,33 @@ jobs:
           ERROR=$(cat "$ERROR_FILE")
           echo "Role assumption failed (this may be expected)"
           echo ""
+          echo "Raw error from AWS:"
+          echo "$ERROR"
+          echo ""
 
-          if echo "$ERROR" | grep -q "NoSuchEntity\|does not exist"; then
+          # "does not exist" or "NoSuchEntity" = role not created yet
+          # "Not authorized" with "Conditions were not met" = trust policy rejected (visibility constraint)
+          # "Not authorized" without conditions message = OIDC provider issue or role doesn't exist
+
+          if echo "$ERROR" | grep -qi "does not exist"; then
             echo "📋 RESULT: Role does not exist yet"
             echo ""
             echo "The PrivateCIWorkflows role has not been created."
             echo "Action: Merge the infra PR to create the role, then re-run this workflow."
-          elif echo "$ERROR" | grep -q "Not authorized\|AccessDenied\|not authorized to perform"; then
-            echo "🔒 RESULT: Access denied (EXPECTED for public repos)"
+          elif echo "$ERROR" | grep -qi "Conditions were not met"; then
+            echo "🔒 RESULT: Access denied - conditions not met (EXPECTED for public repos)"
             echo ""
             echo "The role exists and correctly rejects this public repository."
             echo "The repository_visibility=private constraint is working!"
+          elif echo "$ERROR" | grep -qi "Not authorized"; then
+            echo "❓ RESULT: Not authorized (role may not exist or OIDC provider issue)"
+            echo ""
+            echo "This could mean:"
+            echo "  1. The role does not exist yet"
+            echo "  2. The OIDC provider is not configured for this account"
+            echo "  3. Some other trust policy issue"
           else
             echo "❓ RESULT: Unknown error"
-            echo ""
-            echo "Error details:"
-            echo "$ERROR"
           fi
           echo ""
           echo "==========================================="
