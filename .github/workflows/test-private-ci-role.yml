@@ -1,0 +1,88 @@
+name: Test PrivateCIWorkflows Role
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test-role-assumption:
+    runs-on: ubuntu-latest
+    env:
+      ROLE_ARN: arn:aws:iam::708167139547:role/PrivateCIWorkflows
+    steps:
+      - name: Get OIDC token
+        id: get-token
+        run: |
+          TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Attempt to assume role and report result
+        env:
+          OIDC_TOKEN: ${{ steps.get-token.outputs.token }}
+        run: |
+          echo "==========================================="
+          echo "Testing PrivateCIWorkflows role assumption"
+          echo "Role ARN: $ROLE_ARN"
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Visibility: public"
+          echo "==========================================="
+          echo ""
+
+          ERROR_FILE=$(mktemp)
+
+          RESULT=$(aws sts assume-role-with-web-identity \
+            --role-arn "$ROLE_ARN" \
+            --role-session-name "test-session" \
+            --web-identity-token "$OIDC_TOKEN" \
+            --duration-seconds 900 2>"$ERROR_FILE") && SUCCESS=true || SUCCESS=false
+
+          if [[ "$SUCCESS" == "true" ]]; then
+            echo "✅ RESULT: Role assumed successfully"
+            echo ""
+            echo "This public repo CAN assume the PrivateCIWorkflows role."
+            echo "⚠️  WARNING: This is NOT the expected behavior!"
+            echo "The role should only be assumable by private repos."
+            echo ""
+            echo "Caller identity:"
+            echo "$RESULT" | jq '.AssumedRoleUser'
+            exit 1
+          fi
+
+          ERROR=$(cat "$ERROR_FILE")
+          echo "Role assumption failed (this may be expected)"
+          echo ""
+          echo "Raw error from AWS:"
+          echo "$ERROR"
+          echo ""
+
+          # "does not exist" or "NoSuchEntity" = role not created yet
+          # "Not authorized" with "Conditions were not met" = trust policy rejected (visibility constraint)
+          # "Not authorized" without conditions message = OIDC provider issue or role doesn't exist
+
+          if echo "$ERROR" | grep -qi "does not exist"; then
+            echo "📋 RESULT: Role does not exist yet"
+            echo ""
+            echo "The PrivateCIWorkflows role has not been created."
+            echo "Action: Merge the infra PR to create the role, then re-run this workflow."
+          elif echo "$ERROR" | grep -qi "Conditions were not met"; then
+            echo "🔒 RESULT: Access denied - conditions not met (EXPECTED for public repos)"
+            echo ""
+            echo "The role exists and correctly rejects this public repository."
+            echo "The repository_visibility=private constraint is working!"
+          elif echo "$ERROR" | grep -qi "Not authorized"; then
+            echo "❓ RESULT: Not authorized (role may not exist or OIDC provider issue)"
+            echo ""
+            echo "This could mean:"
+            echo "  1. The role does not exist yet"
+            echo "  2. The OIDC provider is not configured for this account"
+            echo "  3. Some other trust policy issue"
+          else
+            echo "❓ RESULT: Unknown error"
+          fi
+          echo ""
+          echo "==========================================="
