@@ -21,7 +21,7 @@ jobs:
             chmod +x hello.sh
 
       - name: Upload artifact
-        uses: thebrowsercompany/gha-upload-tar-artifact@main
+        uses: thebrowsercompany/gha-upload-tar-artifact@e18c33b1cd416d0d96a91dc6dce06219f98e4e27
         with:
           name: hello-file
           path: hello.sh
@@ -54,7 +54,7 @@ jobs:
             chmod +x hello/hello.sh
 
       - name: Upload artifact
-        uses: thebrowsercompany/gha-upload-tar-artifact@main
+        uses: thebrowsercompany/gha-upload-tar-artifact@e18c33b1cd416d0d96a91dc6dce06219f98e4e27
         with:
           name: hello-dir
           path: hello/
